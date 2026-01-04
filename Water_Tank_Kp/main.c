@@ -55,6 +55,7 @@ typedef struct {
     int n;
     double sim_time;
     int windowIndex;
+    SystemModelCallback modelCallback;  // Model callback (Euler or Trapezoidal)
 } ThreadData;
 
 // Thread function to run a single simulation
@@ -97,6 +98,7 @@ void* runSimulation(void *arg) {
         .level = 0.5,           // Start at 0.5 m
         .setpoint = 2.0,        // Target 2.0 m
         .inflow = 0.0,          // Will be controlled
+        .previousNetFlow = 0.0, // Initialize for trapezoidal integration
         .controller = {
             .params = &sim->params,
             .state = &controllerState,
@@ -108,7 +110,9 @@ void* runSimulation(void *arg) {
             .outflow_coeff = 0.1,   // Outflow coefficient
             .area = 1.0,            // 1 m² cross-section
             .max_inflow = 0.5,      // Max 0.5 m³/s inflow
-            .callback = tankModel   // System model callback
+            .density = 1000.0,      // Water density (kg/m³)
+            .callback = data->modelCallback,  // System model callback (Euler or Trapezoidal)
+            .netFlowCallback = calculateTankNetFlow  // Net flow calculation callback
         }
     };
     
@@ -232,9 +236,13 @@ int main() {
         {NULL, NULL, NULL, NULL, "PID Adaptive Controller", adaptivePidController, {1.0, 0.08, 0.50}}
     };
     
-    printf("Running simulations for all controller types in parallel...\n\n");
+    printf("Running simulations for all controller types in parallel...\n");
+    printf("=================================================================\n\n");
     
-    // Create thread data for each simulation
+    // ============= FIRST RUN: Euler Integration (Standard) =============
+    printf("Phase 1: Running with Euler integration (standard model)...\n\n");
+    
+    // Create thread data for each simulation with Euler model
     ThreadData threadData[8];
     for (int s = 0; s < 8; s++) {
         threadData[s].config = &simulations[s];
@@ -242,6 +250,7 @@ int main() {
         threadData[s].n = n;
         threadData[s].sim_time = sim_time;
         threadData[s].windowIndex = s;
+        threadData[s].modelCallback = tankModel;  // Euler integration
     }
     
 #ifdef _WIN32
@@ -262,7 +271,7 @@ int main() {
         CloseHandle(threads[s]);
     }
     
-    printf("\nAll simulations completed. Plot files saved.\n");
+    printf("\nPhase 1 completed. Euler integration plots saved.\n\n");
 #else
     // POSIX threads
     pthread_t threads[8];
@@ -276,11 +285,77 @@ int main() {
     for (int s = 0; s < 8; s++) {
         pthread_join(threads[s], NULL);
     }
+    
+    printf("\nPhase 1 completed. Euler integration plots saved.\n\n");
 #endif
     
-    printf("\nAll simulations stopped!\n\n");
+    // ============= SECOND RUN: Trapezoidal Integration =============
+    printf("Phase 2: Running with Trapezoidal integration (improved accuracy)...\n\n");
+    
+    // Reconfigure all simulations with Trapezoidal model and update plot names
+    SimulationConfig simulationsTrapezoidal[8] = {
+        {NULL, NULL, NULL, NULL, "P Controller Trapezoidal", pController, {0.85, 0.0, 0.0}},
+        {NULL, NULL, NULL, NULL, "P Adaptive Controller Trapezoidal", adaptivePController, {2.5, 0.0, 0.0}},
+        {NULL, NULL, NULL, NULL, "PD Controller Trapezoidal", pdController, {0.40, 0.0, 0.60}},
+        {NULL, NULL, NULL, NULL, "PD Adaptive Controller Trapezoidal", adaptivePdController, {2.8, 0.0, 0.45}},
+        {NULL, NULL, NULL, NULL, "PI Controller Trapezoidal", piController, {0.30, 0.08, 0.0}},
+        {NULL, NULL, NULL, NULL, "PI Adaptive Controller Trapezoidal", adaptivePiController, {0.80, 0.08, 0.0}},
+        {NULL, NULL, NULL, NULL, "PID Controller Trapezoidal", pidController, {0.35, 0.08, 0.50}},
+        {NULL, NULL, NULL, NULL, "PID Adaptive Controller Trapezoidal", adaptivePidController, {1.0, 0.08, 0.50}}
+    };
+    
+    // Create thread data for trapezoidal simulations
+    ThreadData threadDataTrap[8];
+    for (int s = 0; s < 8; s++) {
+        threadDataTrap[s].config = &simulationsTrapezoidal[s];
+        threadDataTrap[s].dt = dt;
+        threadDataTrap[s].n = n;
+        threadDataTrap[s].sim_time = sim_time;
+        threadDataTrap[s].windowIndex = s + 8;  // Offset window index to avoid overlap
+        threadDataTrap[s].modelCallback = tankModelTrapezoidal;  // Trapezoidal integration
+    }
+    
+#ifdef _WIN32
+    // Windows threads for trapezoidal simulations
+    HANDLE threadsTrap[8];
+    for (int s = 0; s < 8; s++) {
+        threadsTrap[s] = (HANDLE)_beginthreadex(NULL, 0, runSimulation, &threadDataTrap[s], 0, NULL);
+        if (threadsTrap[s] == NULL) {
+            printf("Failed to create thread for %s\n", simulationsTrapezoidal[s].name);
+        }
+    }
+    
+    // Wait for all trapezoidal threads to complete
+    WaitForMultipleObjects(8, threadsTrap, TRUE, INFINITE);
+    
+    // Close thread handles
+    for (int s = 0; s < 8; s++) {
+        CloseHandle(threadsTrap[s]);
+    }
+    
+    printf("\nPhase 2 completed. Trapezoidal integration plots saved.\n");
+#else
+    // POSIX threads for trapezoidal simulations
+    pthread_t threadsTrap[8];
+    for (int s = 0; s < 8; s++) {
+        if (pthread_create(&threadsTrap[s], NULL, runSimulation, &threadDataTrap[s]) != 0) {
+            printf("Failed to create thread for %s\n", simulationsTrapezoidal[s].name);
+        }
+    }
+    
+    // Wait for all trapezoidal threads to complete
+    for (int s = 0; s < 8; s++) {
+        pthread_join(threadsTrap[s], NULL);
+    }
+    
+    printf("\nPhase 2 completed. Trapezoidal integration plots saved.\n");
+#endif
+    
+    printf("\n=================================================================\n");
+    printf("All simulations completed!\n\n");
     
     // Static plots are saved by real-time plotting
+    printf("Total plots generated: 16 (8 Euler + 8 Trapezoidal)\n");
     printf("All plots have been saved.\n");
     
     printf("\nPress Enter to close...\n");

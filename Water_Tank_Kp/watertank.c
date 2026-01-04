@@ -28,15 +28,72 @@ ErrorCode tankModel(void *system, double input, double dt, double *output) {
     // Set inflow from control input
     tank->inflow = input;
     
-    // Outflow proportional to square root of level (Torricelli's law simplified)
-    double outflow = tank->model.outflow_coeff * sqrt(fmax(tank->level, 0.0));
+    // Calculate net MASS flow using callback: ṁ = (dvol_w/dt) * ρ_w
+    double netMassFlow = calculateTankNetFlow(tank, tank->level, tank->inflow);
     
-    // Change in level = (inflow - outflow) / area
-    double dLevel = (tank->inflow - outflow) / tank->model.area;
-    tank->level += dLevel * dt;
+    // Volume change: dvol_w/dt = ṁ / ρ
+    double dVolume = (netMassFlow / tank->model.density) * dt;
+    
+    // Change in level = dVolume / area
+    tank->level += dVolume / tank->model.area;
     
     // Keep level non-negative
     if (tank->level < 0) tank->level = 0;
+    
+    // Return the updated water level as output
+    *output = tank->level;
+    return ERROR_SUCCESS;
+}
+
+// Calculate net flow for water tank using Torricelli's law
+// Returns net MASS flow rate: ṁ = (dvol_w/dt) * ρ_w
+// Net volumetric flow = inflow - outflow, where outflow = coeff * sqrt(level)
+// Net mass flow = net volumetric flow * density
+double calculateTankNetFlow(WaterTank *tank, double level, double inflow) {
+    // Outflow proportional to square root of level (Torricelli's law)
+    double outflow = tank->model.outflow_coeff * sqrt(fmax(level, 0.0));
+    
+    // Net volumetric flow rate (m³/s)
+    double netVolumetricFlow = inflow - outflow;
+    
+    // Convert to mass flow rate: ṁ = (dvol_w/dt) * ρ_w
+    double netMassFlow = netVolumetricFlow * tank->model.density;
+    
+    return netMassFlow;
+}
+
+// Water tank model with trapezoidal integration
+// More accurate numerical integration using trapezoidal rule
+// Following the generalized algorithm: vol[t_i] = vol[t_{i-1}] + ((ṁ[t_{i-1}] + ṁ[t_i]) / 2) * dt
+// Where: ṁ = (dvol_w/dt) * ρ_w  and  dvol_w/dt = ṁ / ρ
+// In our case: level[t_i] = level[t_{i-1}] + ((ṁ[t_{i-1}] + ṁ[t_i]) / (2 * ρ * area)) * dt
+ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *output) {
+    if (system == NULL || output == NULL) return ERROR_NULL_POINTER;
+    
+    WaterTank *tank = (WaterTank *)system;
+    
+    // Set inflow from control input
+    tank->inflow = input;
+    
+    // Calculate net MASS flow at current level (this becomes ṁ[t_i])
+    // netFlowCallback returns ṁ = (dvol_w/dt) * ρ_w
+    double massFlow_current = tank->model.netFlowCallback(tank, tank->level, tank->inflow);
+    
+    // Apply trapezoidal rule: average of previous and current mass flows
+    // ṁ_avg = (ṁ[t_{i-1}] + ṁ[t_i]) / 2
+    double massFlow_avg = (tank->previousNetFlow + massFlow_current) / 2.0;
+    
+    // Convert mass flow to volume change: dvol_w/dt = ṁ / ρ
+    double volumeChange = (massFlow_avg / tank->model.density) * dt;
+    
+    // Convert volume change to level change: dlevel = dvolume / area
+    tank->level += volumeChange / tank->model.area;
+    
+    // Keep level non-negative
+    if (tank->level < 0) tank->level = 0;
+    
+    // Store current mass flow for next iteration (it becomes the previous value)
+    tank->previousNetFlow = massFlow_current;
     
     // Return the updated water level as output
     *output = tank->level;
