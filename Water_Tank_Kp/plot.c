@@ -171,9 +171,34 @@ ErrorCode closeRealtimePlot(void *plotHandle, const char *controllerName) {
     }
     fprintf(plot->gnuplotPipe, "EOD\n");
     
-    // Now save to PNG using datablocks
+    // Determine controller type and create appropriate subdirectory
+    const char *controllerType = "other";
+    if (strstr(controllerName, "PID") != NULL) {
+        controllerType = "PID";
+    } else if (strstr(controllerName, "PI") != NULL) {
+        controllerType = "PI";
+    } else if (strstr(controllerName, "PD") != NULL) {
+        controllerType = "PD";
+    } else if (strstr(controllerName, "P ") != NULL || strncmp(controllerName, "P ", 2) == 0) {
+        controllerType = "P";
+    }
+    
+    // Create results directory structure if it doesn't exist
+#ifdef _WIN32
+    CreateDirectoryA("results", NULL);
+    char subdir[256];
+    snprintf(subdir, sizeof(subdir), "results/%s", controllerType);
+    CreateDirectoryA(subdir, NULL);
+#else
+    mkdir("results", 0755);
+    char subdir[256];
+    snprintf(subdir, sizeof(subdir), "results/%s", controllerType);
+    mkdir(subdir, 0755);
+#endif
+    
+    // Now save to PNG using datablocks in the appropriate subdirectory
     char outputName[512];
-    snprintf(outputName, sizeof(outputName), "plot_%s.png", plot->sanitizedName);
+    snprintf(outputName, sizeof(outputName), "results/%s/plot_%s.png", controllerType, plot->sanitizedName);
     fprintf(plot->gnuplotPipe, "set terminal pngcairo size 1000,700 enhanced font 'Verdana,10'\n");
     fprintf(plot->gnuplotPipe, "set output '%s'\n", outputName);
     fprintf(plot->gnuplotPipe, "set multiplot layout 2,1\n");
@@ -229,9 +254,34 @@ void generatePlot(double *time, double *level, double *setpoint,
     
     if (useFallback) {
         printf("Plotting to CSV file (gnuplot not available)...\n");
+        
+        // Determine controller type
+        const char *controllerType = "other";
+        if (strstr(controllerName, "PID") != NULL) {
+            controllerType = "PID";
+        } else if (strstr(controllerName, "PI") != NULL) {
+            controllerType = "PI";
+        } else if (strstr(controllerName, "PD") != NULL) {
+            controllerType = "PD";
+        } else if (strstr(controllerName, "P ") != NULL || strncmp(controllerName, "P ", 2) == 0) {
+            controllerType = "P";
+        }
+        
+        // Create results directory structure if it doesn't exist
+#ifdef _WIN32
+        CreateDirectoryA("results", NULL);
+        char subdir[256];
+        snprintf(subdir, sizeof(subdir), "results/%s", controllerType);
+        CreateDirectoryA(subdir, NULL);
+#else
+        mkdir("results", 0755);
+        char subdir[256];
+        snprintf(subdir, sizeof(subdir), "results/%s", controllerType);
+        mkdir(subdir, 0755);
+#endif
         // Save all data to CSV with controller name
         char csvFilename[512];
-        snprintf(csvFilename, sizeof(csvFilename), "output_%s.csv", sanitizedName);
+        snprintf(csvFilename, sizeof(csvFilename), "results/%s/output_%s.csv", controllerType, sanitizedName);
         FILE *csvFile = fopen(csvFilename, "w");
         if (csvFile != NULL) {
             fprintf(csvFile, "Time,Level,Setpoint,Control_Signal\n");
@@ -265,10 +315,35 @@ void generatePlot(double *time, double *level, double *setpoint,
             fclose(f2);
             fclose(f3);
             
+            // Determine controller type
+            const char *controllerType = "other";
+            if (strstr(controllerName, "PID") != NULL) {
+                controllerType = "PID";
+            } else if (strstr(controllerName, "PI") != NULL) {
+                controllerType = "PI";
+            } else if (strstr(controllerName, "PD") != NULL) {
+                controllerType = "PD";
+            } else if (strstr(controllerName, "P ") != NULL || strncmp(controllerName, "P ", 2) == 0) {
+                controllerType = "P";
+            }
+            
+            // Create results directory structure if it doesn't exist
+#ifdef _WIN32
+            CreateDirectoryA("results", NULL);
+            char subdir[256];
+            snprintf(subdir, sizeof(subdir), "results/%s", controllerType);
+            CreateDirectoryA(subdir, NULL);
+#else
+            mkdir("results", 0755);
+            char subdir[256];
+            snprintf(subdir, sizeof(subdir), "results/%s", controllerType);
+            mkdir(subdir, 0755);
+#endif
+            
             // Create gnuplot script file with unique name
             char scriptName[512], outputName[512];
             snprintf(scriptName, sizeof(scriptName), "_plot_script_%s.gp", sanitizedName);
-            snprintf(outputName, sizeof(outputName), "plot_%s.png", sanitizedName);
+            snprintf(outputName, sizeof(outputName), "results/%s/plot_%s.png", controllerType, sanitizedName);
             
             FILE *script = fopen(scriptName, "w");
             if (script) {

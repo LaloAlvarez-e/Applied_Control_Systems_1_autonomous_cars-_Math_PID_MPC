@@ -65,6 +65,15 @@ ErrorCode tankModel(void *system, double input, double dt, double *output);
 // Returns: net flow (m³/s)
 double calculateTankNetFlow(WaterTank *tank, double level, double inflow);
 
+// Calculate simplified net flow (no outflow, direct mass control)
+// For comparison with Python reference implementation
+// Parameters:
+//   tank: pointer to WaterTank structure
+//   level: water level (m) - not used in this simplified model
+//   inflow: inflow rate (m³/s)
+// Returns: net mass flow (kg/s)
+double calculateTankNetFlowSimplified(WaterTank *tank, double level, double inflow);
+
 // Water tank math model with trapezoidal integration (Torricelli's law)
 // This implements the physics of water tank dynamics using trapezoidal rule
 // More accurate than Euler's method for numerical integration
@@ -76,4 +85,24 @@ double calculateTankNetFlow(WaterTank *tank, double level, double inflow);
 // Returns: ErrorCode
 ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *output);
 
+// Water tank math model with trapezoidal integration (Simplified - No Outflow)
+// This matches the Python reference implementation where controller directly controls mass flow
+// No outflow dynamics - pure accumulation model
+// Parameters:
+//   system: pointer to WaterTank structure (cast from void*)
+//   input: control input (treated as mass flow rate in kg/s)
+//   dt: time step (seconds)
+//   output: pointer to store water level after update
+// Returns: ErrorCode
+ErrorCode tankModelTrapezoidalSimplified(void *system, double input, double dt, double *output);
+// Water tank math model with trapezoidal integration (Simplified - No Outflow)
+// This matches the Python reference implementation where controller directly controls mass flow
+// No outflow dynamics - pure accumulation model
+// Parameters:
+//   system: pointer to WaterTank structure (cast from void*)
+//   input: control input (treated as volumetric flow rate in m³/s, converted to mass)
+//   dt: time step (seconds)
+//   output: pointer to store water level after update
+// Returns: ErrorCode
+ErrorCode tankModelTrapezoidalSimplified(void *system, double input, double dt, double *output);
 #endif // WATERTANK_H

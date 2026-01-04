@@ -111,8 +111,9 @@ void* runSimulation(void *arg) {
             .area = 1.0,            // 1 m² cross-section
             .max_inflow = 0.5,      // Max 0.5 m³/s inflow
             .density = 1000.0,      // Water density (kg/m³)
-            .callback = data->modelCallback,  // System model callback (Euler or Trapezoidal)
-            .netFlowCallback = calculateTankNetFlow  // Net flow calculation callback
+            .callback = data->modelCallback,  // System model callback (Euler/Trapezoidal/Simplified)
+            .netFlowCallback = (data->modelCallback == tankModelTrapezoidalSimplified) ? 
+                               calculateTankNetFlowSimplified : calculateTankNetFlow
         }
     };
     
@@ -208,32 +209,42 @@ int main() {
     double sim_time = 0.0;        // Infinite simulation
     int n = 0;                    // Not used anymore
     
-    // Configure 8 different controllers with optimized tuning
+    // Controller parameter definitions
     // System characteristics: outflow_coeff=0.1, area=1.0, max_inflow=0.5
+    const ControllerParams PARAMS_P           = {0.85, 0.0, 0.0};   // P Controller
+    const ControllerParams PARAMS_P_ADAPTIVE  = {2.5,  0.0, 0.0};   // P Adaptive Controller
+    const ControllerParams PARAMS_PD          = {0.40, 0.0, 0.60};  // PD Controller
+    const ControllerParams PARAMS_PD_ADAPTIVE = {2.8,  0.0, 0.45};  // PD Adaptive Controller
+    const ControllerParams PARAMS_PI          = {0.30, 0.08, 0.0};  // PI Controller
+    const ControllerParams PARAMS_PI_ADAPTIVE = {0.80, 0.08, 0.0};  // PI Adaptive Controller
+    const ControllerParams PARAMS_PID         = {0.35, 0.08, 0.50}; // PID Controller
+    const ControllerParams PARAMS_PID_ADAPTIVE = {1.0, 0.08, 0.50}; // PID Adaptive Controller
+    
+    // Configure 8 different controllers with optimized tuning
     SimulationConfig simulations[8] = {
         // P Controller: Regular proportional control (high steady-state error)
-        {NULL, NULL, NULL, NULL, "P Controller", pController, {0.85, 0.0, 0.0}},
+        {NULL, NULL, NULL, NULL, "P Controller", pController, PARAMS_P},
         
         // Adaptive P Controller: P with gain scheduling (better performance than regular P)
-        {NULL, NULL, NULL, NULL, "P Adaptive Controller", adaptivePController, {2.5, 0.0, 0.0}},
+        {NULL, NULL, NULL, NULL, "P Adaptive Controller", adaptivePController, PARAMS_P_ADAPTIVE},
         
         // PD Controller: Proportional-Derivative control (faster response, less overshoot)
-        {NULL, NULL, NULL, NULL, "PD Controller", pdController, {0.40, 0.0, 0.60}},
+        {NULL, NULL, NULL, NULL, "PD Controller", pdController, PARAMS_PD},
         
         // Adaptive PD Controller: PD with gain scheduling
-        {NULL, NULL, NULL, NULL, "PD Adaptive Controller", adaptivePdController, {2.8, 0.0, 0.45}},
+        {NULL, NULL, NULL, NULL, "PD Adaptive Controller", adaptivePdController, PARAMS_PD_ADAPTIVE},
         
         // PI Controller: Eliminates steady-state error with integral term
-        {NULL, NULL, NULL, NULL, "PI Controller", piController, {0.30, 0.08, 0.0}},
+        {NULL, NULL, NULL, NULL, "PI Controller", piController, PARAMS_PI},
         
         // Adaptive PI Controller: PI with gain scheduling
-        {NULL, NULL, NULL, NULL, "PI Adaptive Controller", adaptivePiController, {0.80, 0.08, 0.0}},
+        {NULL, NULL, NULL, NULL, "PI Adaptive Controller", adaptivePiController, PARAMS_PI_ADAPTIVE},
         
         // PID Controller: Balanced all three terms for optimal performance
-        {NULL, NULL, NULL, NULL, "PID Controller", pidController, {0.35, 0.08, 0.50}},
+        {NULL, NULL, NULL, NULL, "PID Controller", pidController, PARAMS_PID},
         
         // Adaptive PID Controller: PID with gain scheduling (ultimate performance)
-        {NULL, NULL, NULL, NULL, "PID Adaptive Controller", adaptivePidController, {1.0, 0.08, 0.50}}
+        {NULL, NULL, NULL, NULL, "PID Adaptive Controller", adaptivePidController, PARAMS_PID_ADAPTIVE}
     };
     
     printf("Running simulations for all controller types in parallel...\n");
@@ -294,14 +305,14 @@ int main() {
     
     // Reconfigure all simulations with Trapezoidal model and update plot names
     SimulationConfig simulationsTrapezoidal[8] = {
-        {NULL, NULL, NULL, NULL, "P Controller Trapezoidal", pController, {0.85, 0.0, 0.0}},
-        {NULL, NULL, NULL, NULL, "P Adaptive Controller Trapezoidal", adaptivePController, {2.5, 0.0, 0.0}},
-        {NULL, NULL, NULL, NULL, "PD Controller Trapezoidal", pdController, {0.40, 0.0, 0.60}},
-        {NULL, NULL, NULL, NULL, "PD Adaptive Controller Trapezoidal", adaptivePdController, {2.8, 0.0, 0.45}},
-        {NULL, NULL, NULL, NULL, "PI Controller Trapezoidal", piController, {0.30, 0.08, 0.0}},
-        {NULL, NULL, NULL, NULL, "PI Adaptive Controller Trapezoidal", adaptivePiController, {0.80, 0.08, 0.0}},
-        {NULL, NULL, NULL, NULL, "PID Controller Trapezoidal", pidController, {0.35, 0.08, 0.50}},
-        {NULL, NULL, NULL, NULL, "PID Adaptive Controller Trapezoidal", adaptivePidController, {1.0, 0.08, 0.50}}
+        {NULL, NULL, NULL, NULL, "P Controller Trapezoidal", pController, PARAMS_P},
+        {NULL, NULL, NULL, NULL, "P Adaptive Controller Trapezoidal", adaptivePController, PARAMS_P_ADAPTIVE},
+        {NULL, NULL, NULL, NULL, "PD Controller Trapezoidal", pdController, PARAMS_PD},
+        {NULL, NULL, NULL, NULL, "PD Adaptive Controller Trapezoidal", adaptivePdController, PARAMS_PD_ADAPTIVE},
+        {NULL, NULL, NULL, NULL, "PI Controller Trapezoidal", piController, PARAMS_PI},
+        {NULL, NULL, NULL, NULL, "PI Adaptive Controller Trapezoidal", adaptivePiController, PARAMS_PI_ADAPTIVE},
+        {NULL, NULL, NULL, NULL, "PID Controller Trapezoidal", pidController, PARAMS_PID},
+        {NULL, NULL, NULL, NULL, "PID Adaptive Controller Trapezoidal", adaptivePidController, PARAMS_PID_ADAPTIVE}
     };
     
     // Create thread data for trapezoidal simulations
@@ -351,11 +362,73 @@ int main() {
     printf("\nPhase 2 completed. Trapezoidal integration plots saved.\n");
 #endif
     
+    // ============= THIRD RUN: Simplified Model (No Outflow) =============
+    printf("\nPhase 3: Running with Simplified model (no outflow - matches Python reference)...\n\n");
+    
+    // All 8 controllers for simplified model comparison
+    SimulationConfig simulationsSimplified[8] = {
+        {NULL, NULL, NULL, NULL, "P Controller Simplified", pController, PARAMS_P},
+        {NULL, NULL, NULL, NULL, "P Adaptive Controller Simplified", adaptivePController, PARAMS_P_ADAPTIVE},
+        {NULL, NULL, NULL, NULL, "PD Controller Simplified", pdController, PARAMS_PD},
+        {NULL, NULL, NULL, NULL, "PD Adaptive Controller Simplified", adaptivePdController, PARAMS_PD_ADAPTIVE},
+        {NULL, NULL, NULL, NULL, "PI Controller Simplified", piController, PARAMS_PI},
+        {NULL, NULL, NULL, NULL, "PI Adaptive Controller Simplified", adaptivePiController, PARAMS_PI_ADAPTIVE},
+        {NULL, NULL, NULL, NULL, "PID Controller Simplified", pidController, PARAMS_PID},
+        {NULL, NULL, NULL, NULL, "PID Adaptive Controller Simplified", adaptivePidController, PARAMS_PID_ADAPTIVE}
+    };
+    
+    // Create thread data for simplified simulations
+    ThreadData threadDataSimp[8];
+    for (int s = 0; s < 8; s++) {
+        threadDataSimp[s].config = &simulationsSimplified[s];
+        threadDataSimp[s].dt = dt;
+        threadDataSimp[s].n = n;
+        threadDataSimp[s].sim_time = sim_time;
+        threadDataSimp[s].windowIndex = s + 16;  // Offset window index to avoid overlap
+        threadDataSimp[s].modelCallback = tankModelTrapezoidalSimplified;  // Simplified model
+    }
+    
+#ifdef _WIN32
+    // Windows threads for simplified simulations
+    HANDLE threadsSimp[8];
+    for (int s = 0; s < 8; s++) {
+        threadsSimp[s] = (HANDLE)_beginthreadex(NULL, 0, runSimulation, &threadDataSimp[s], 0, NULL);
+        if (threadsSimp[s] == NULL) {
+            printf("Failed to create thread for %s\n", simulationsSimplified[s].name);
+        }
+    }
+    
+    // Wait for all simplified threads to complete
+    WaitForMultipleObjects(8, threadsSimp, TRUE, INFINITE);
+    
+    // Close thread handles
+    for (int s = 0; s < 8; s++) {
+        CloseHandle(threadsSimp[s]);
+    }
+    
+    printf("\nPhase 3 completed. Simplified model plots saved.\n");
+#else
+    // POSIX threads for simplified simulations
+    pthread_t threadsSimp[8];
+    for (int s = 0; s < 8; s++) {
+        if (pthread_create(&threadsSimp[s], NULL, runSimulation, &threadDataSimp[s]) != 0) {
+            printf("Failed to create thread for %s\n", simulationsSimplified[s].name);
+        }
+    }
+    
+    // Wait for all simplified threads to complete
+    for (int s = 0; s < 8; s++) {
+        pthread_join(threadsSimp[s], NULL);
+    }
+    
+    printf("\nPhase 3 completed. Simplified model plots saved.\n");
+#endif
+    
     printf("\n=================================================================\n");
     printf("All simulations completed!\n\n");
     
     // Static plots are saved by real-time plotting
-    printf("Total plots generated: 16 (8 Euler + 8 Trapezoidal)\n");
+    printf("Total plots generated: 24 (8 Euler + 8 Trapezoidal + 8 Simplified)\n");
     printf("All plots have been saved.\n");
     
     printf("\nPress Enter to close...\n");

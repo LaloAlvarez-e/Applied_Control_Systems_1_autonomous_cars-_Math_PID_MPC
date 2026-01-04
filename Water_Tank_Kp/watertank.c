@@ -62,6 +62,16 @@ double calculateTankNetFlow(WaterTank *tank, double level, double inflow) {
     return netMassFlow;
 }
 
+// Calculate simplified net flow (no outflow dynamics)
+// Matches Python reference implementation where control input is directly mass flow
+// No Torricelli's law, no outflow - pure accumulation
+double calculateTankNetFlowSimplified(WaterTank *tank, double level, double inflow) {
+    // In simplified model, inflow is treated as direct mass flow rate
+    // No outflow calculation - the controller has perfect control
+    // This matches: m_dot = Kp * error (Python implementation)
+    return inflow * tank->model.density;  // Convert volumetric inflow to mass flow
+}
+
 // Water tank model with trapezoidal integration
 // More accurate numerical integration using trapezoidal rule
 // Following the generalized algorithm: vol[t_i] = vol[t_{i-1}] + ((ṁ[t_{i-1}] + ṁ[t_i]) / 2) * dt
@@ -99,3 +109,45 @@ ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *ou
     *output = tank->level;
     return ERROR_SUCCESS;
 }
+
+// Water tank model with trapezoidal integration (Simplified - No Outflow)
+// Matches Python reference: volume[i] = volume[i-1] + (m_dot[i-1] + m_dot[i])/(2*density) * dt
+// No outflow dynamics - controller directly controls mass accumulation
+ErrorCode tankModelTrapezoidalSimplified(void *system, double input, double dt, double *output) {
+    if (system == NULL || output == NULL) return ERROR_NULL_POINTER;
+    
+    WaterTank *tank = (WaterTank *)system;
+    
+    // Set inflow from control input
+    tank->inflow = input;
+    
+    // Calculate net MASS flow at current level (this becomes ṁ[t_i])
+    // In simplified model: ṁ = input * density (no outflow)
+    // This is equivalent to Python: m_dot = Kp * error
+    double massFlow_current = tank->model.netFlowCallback(tank, tank->level, tank->inflow);
+    
+    // Apply trapezoidal rule: average of previous and current mass flows
+    // Python equation: volume[i] = volume[i-1] + (m_dot[i-1] + m_dot[i])/(2*density) * dt
+    // ṁ_avg = (ṁ[t_{i-1}] + ṁ[t_i]) / 2
+    double massFlow_avg = (tank->previousNetFlow + massFlow_current) / 2.0;
+    
+    // Convert mass flow to volume change: dvol_w/dt = ṁ / ρ
+    // This matches: (m_dot[i-1] + m_dot[i])/(2*density)
+    double volumeChange = (massFlow_avg / tank->model.density) * dt;
+    
+    // Convert volume change to level change: dlevel = dvolume / area
+    tank->level += volumeChange / tank->model.area;
+    
+    // Keep level non-negative
+    if (tank->level < 0) tank->level = 0;
+    
+    // Store current mass flow for next iteration (it becomes the previous value)
+    tank->previousNetFlow = massFlow_current;
+    
+    // Return the updated water level as output
+    *output = tank->level;
+    return ERROR_SUCCESS;
+}
+
+
+// Water tank model with trapezoidal integration (Simplified - No Outflow)
