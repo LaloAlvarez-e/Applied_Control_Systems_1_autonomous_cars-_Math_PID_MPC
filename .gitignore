@@ -53,3 +53,33 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+
+#build files
+**/build/**
+**/bin/**
+**/Debug/**
+**/Release/**
+**/x64/**
+**/Thumbs.db
+**/.DS_Store   
+**/*.log
+**/*.csv
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.svg
+**/*.mp4
+**/*.avi
+**/*.mov
+**/*.mkv
+**/*.zip
+**/*.tar.gz
+**/*.rar
+**/*.7z
+**/*.bak
+**/*.old
+**/*.swp
+**/~
+

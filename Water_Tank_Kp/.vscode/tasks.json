@@ -1,0 +1,72 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build with CMake",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "build"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Build the project using CMake"
+        },
+        {
+            "label": "Configure CMake",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-S",
+                ".",
+                "-B",
+                "build",
+                "-G",
+                "Unix Makefiles"
+            ],
+            "problemMatcher": [],
+            "detail": "Configure CMake build system"
+        },
+        {
+            "label": "Clean Build",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "build",
+                "--target",
+                "clean"
+            ],
+            "problemMatcher": [],
+            "detail": "Clean build artifacts"
+        },
+        {
+            "label": "Rebuild",
+            "type": "shell",
+            "dependsOn": [
+                "Clean Build",
+                "Build with CMake"
+            ],
+            "dependsOrder": "sequence",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "Clean and rebuild the project"
+        },
+        {
+            "label": "Build and Run",
+            "type": "shell",
+            "command": "cmake --build build && echo \"\" | .\\build\\bin\\water_tank_kp.exe",
+            "group": "test",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Build and run the water tank simulation"
+        }
+    ]
+}

@@ -1,0 +1,18 @@
+{
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c",
+        "stdio.h": "c",
+        "stdlib.h": "c",
+        "math.h": "c",
+        "plot.h": "c",
+        "controller.h": "c",
+        "watertank.h": "c"
+    },
+    "C_Cpp.default.compilerPath": "gcc.exe",
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.intelliSenseMode": "windows-gcc-x64",
+    "cmake.configureOnOpen": false,
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.generator": "Unix Makefiles"
+}
