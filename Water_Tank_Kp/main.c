@@ -94,9 +94,14 @@ void* runSimulation(void *arg) {
     };
     
     // Initialize water tank with controller configuration
+    // Python reference: vol_o1_i=30 m³, vol_r1_i=70 m³, radius=5m → area=π*r²≈78.54 m²
+    // Normalized to percentage: 0% = empty, 100% = final_volume (354 m³)
+    double tank_area = 3.14159265359 * 5.0 * 5.0;  // π*r² ≈ 78.54 m²
+    double max_height = 4.507;  // Maximum tank height in meters
+    double max_volume = tank_area * max_height;  // Maximum volume = area × height ≈ 354 m³
     WaterTank tank = {
-        .level = 0.5,           // Start at 0.5 m
-        .setpoint = 2.0,        // Target 2.0 m
+        .level = 30.0,          // Start at 30% (106.2 m³ / 354 m³ max)
+        .setpoint = 70.0,       // Target 70% (247.8 m³ / 354 m³ max)
         .inflow = 0.0,          // Will be controlled
         .previousNetFlow = 0.0, // Initialize for trapezoidal integration
         .controller = {
@@ -108,38 +113,32 @@ void* runSimulation(void *arg) {
         },
         .model = {
             .outflow_coeff = 0.1,   // Outflow coefficient
-            .area = 1.0,            // 1 m² cross-section
-            .max_inflow = 0.5,      // Max 0.5 m³/s inflow
-            .density = 1000.0,      // Water density (kg/m³)
+            .area = tank_area,      // 78.54 m² cross-section (matches Python π*r²)
+            .max_inflow = 50.0,     // Max 50 m³/s inflow (increased for high Kp values)
+            .density = 1000.0,      // Water density (kg/m³) - matches Python density_water=1000
+            .max_level = max_volume, // 100 m³ maximum volume (100%)
             .callback = data->modelCallback,  // System model callback (Euler/Trapezoidal/Simplified)
             .netFlowCallback = (data->modelCallback == tankModelTrapezoidalSimplified) ? 
                                calculateTankNetFlowSimplified : calculateTankNetFlow
         }
     };
     
-    // Run simulation for 100 seconds (optimal for visualization with 50-second buffer)
+    // Run simulation matching Python reference
     int i = 0;
-    double max_time = 125.0;  // Run for 125 seconds
+    double max_time = data->sim_time;  // Use sim_time from thread data
     while (keep_running && (i * dt < max_time)) {
         double current_time = i * dt;
         
-        // 8 setpoints: 5 normal + 3 aggressive at the end
-        if (current_time < 20.0) {
-            tank.setpoint = 2.0;  // Setpoint 1: 0-20s
-        } else if (current_time < 40.0) {
-            tank.setpoint = 1.5;  // Setpoint 2: 20-40s
-        } else if (current_time < 60.0) {
-            tank.setpoint = 2.5;  // Setpoint 3: 40-60s
-        } else if (current_time < 80.0) {
-            tank.setpoint = 1.8;  // Setpoint 4: 60-80s
-        } else if (current_time < 100.0) {
-            tank.setpoint = 2.2;  // Setpoint 5: 80-100s
-        } else if (current_time < 110.0) {
-            tank.setpoint = 3.0;  // Setpoint 6 AGGRESSIVE: 100-110s (10s, +0.8m jump)
-        } else if (current_time < 117.0) {
-            tank.setpoint = 1.0;  // Setpoint 7 AGGRESSIVE: 110-117s (7s, -2.0m drop!)
+        // Setpoint profile matching Python Tank 1 reference (normalized to 0-100%)
+        // Setpoint transitions: 70%→20%→90%→50% of max volume (354 m³)
+        if (current_time < 12.0) {
+            tank.setpoint = 70.0;  // 70% (247.8 m³ / 354 m³)
+        } else if (current_time < 24.0) {
+            tank.setpoint = 20.0;  // 20% (70.8 m³ / 354 m³)
+        } else if (current_time < 36.0) {
+            tank.setpoint = 90.0;  // 90% (318.6 m³ / 354 m³)
         } else {
-            tank.setpoint = 2.8;  // Setpoint 8 AGGRESSIVE: 117-125s (8s, +1.8m jump!)
+            tank.setpoint = 50.0;  // 50% (177.0 m³ / 354 m³)
         }
         
         // Update tank using specified controller
@@ -202,17 +201,25 @@ int main() {
     
     printf("Water Tank Control System - Comparing P, PI, PD, and PID Controllers\n");
     printf("=====================================================================\n");
-    printf("Running 125-second simulation and saving plots to PNG files...\n\n");
+    printf("Running 50-second simulation (matching Python reference) and saving plots to PNG files...\n\n");
     
-    // Simulation parameters
-    double dt = 0.1;              // Time step (s)
+    // Simulation parameters (matching Python reference: calculus_sim_waterTanks_Kp_controller.py)
+    double dt = 0.04;             // Time step (s) - matches Python dt=0.04
     double sim_time = 0.0;        // Infinite simulation
     int n = 0;                    // Not used anymore
+    double t_end = 50.0;          // Simulation end time (s) - matches Python t_end=50
+    
+    // Tank geometry from Python reference
+    double radius = 5.0;          // Tank radius (m) - matches Python radius=5
+    double tank_area = 3.14159265359 * radius * radius;  // Area = π*r² ≈ 78.54 m²
     
     // Controller parameter definitions
-    // System characteristics: outflow_coeff=0.1, area=1.0, max_inflow=0.5
-    const ControllerParams PARAMS_P           = {0.85, 0.0, 0.0};   // P Controller
-    const ControllerParams PARAMS_P_ADAPTIVE  = {2.5,  0.0, 0.0};   // P Adaptive Controller
+    // Python reference uses Kp=1000 for mass flow (kg/s) with volume error (m³)
+    // Our controller uses volume error (m³) and outputs volume flow (m³/s)
+    // Therefore: C_Kp = Python_Kp / density = 1000 / 1000 = 1.0
+    // NO scaling by area needed since we work with volume directly
+    const ControllerParams PARAMS_P           = {1.0,  0.0, 0.0};   // P: Kp=1.0 (matches Python Kp=1000)
+    const ControllerParams PARAMS_P_ADAPTIVE  = {5.0,  0.0, 0.0};   // P Adaptive: Kp=5.0 (matches Python Kp=5000)
     const ControllerParams PARAMS_PD          = {0.40, 0.0, 0.60};  // PD Controller
     const ControllerParams PARAMS_PD_ADAPTIVE = {2.8,  0.0, 0.45};  // PD Adaptive Controller
     const ControllerParams PARAMS_PI          = {0.30, 0.08, 0.0};  // PI Controller
@@ -259,13 +266,13 @@ int main() {
         threadData[s].config = &simulations[s];
         threadData[s].dt = dt;
         threadData[s].n = n;
-        threadData[s].sim_time = sim_time;
+        threadData[s].sim_time = t_end;  // Use t_end for simulation time
         threadData[s].windowIndex = s;
         threadData[s].modelCallback = tankModel;  // Euler integration
     }
     
 #ifdef _WIN32
-    // Windows threads
+    // Windows threadst_end;  // Use t_end for simulation time
     HANDLE threads[8];
     for (int s = 0; s < 8; s++) {
         threads[s] = (HANDLE)_beginthreadex(NULL, 0, runSimulation, &threadData[s], 0, NULL);
@@ -321,13 +328,13 @@ int main() {
         threadDataTrap[s].config = &simulationsTrapezoidal[s];
         threadDataTrap[s].dt = dt;
         threadDataTrap[s].n = n;
-        threadDataTrap[s].sim_time = sim_time;
+        threadDataTrap[s].sim_time = t_end;  // Use t_end for simulation time
         threadDataTrap[s].windowIndex = s + 8;  // Offset window index to avoid overlap
         threadDataTrap[s].modelCallback = tankModelTrapezoidal;  // Trapezoidal integration
     }
     
 #ifdef _WIN32
-    // Windows threads for trapezoidal simulations
+    // Windows threads for trapezoidat_end;  // Use t_end for simulation timeions
     HANDLE threadsTrap[8];
     for (int s = 0; s < 8; s++) {
         threadsTrap[s] = (HANDLE)_beginthreadex(NULL, 0, runSimulation, &threadDataTrap[s], 0, NULL);
@@ -383,7 +390,7 @@ int main() {
         threadDataSimp[s].config = &simulationsSimplified[s];
         threadDataSimp[s].dt = dt;
         threadDataSimp[s].n = n;
-        threadDataSimp[s].sim_time = sim_time;
+        threadDataSimp[s].sim_time = t_end;  // Use t_end for simulation time
         threadDataSimp[s].windowIndex = s + 16;  // Offset window index to avoid overlap
         threadDataSimp[s].modelCallback = tankModelTrapezoidalSimplified;  // Simplified model
     }

@@ -77,8 +77,7 @@ ErrorCode initRealtimePlot(const char *controllerName, double Kp, int windowInde
     
     *plotHandle = NULL;
     
-    if (useFallback) return ERROR_SUCCESS;
-    
+    // Always create plot structure to store data, even if gnuplot isn't available
     RealtimePlot *plot = (RealtimePlot*)malloc(sizeof(RealtimePlot));
     if (!plot) return ERROR_NULL_POINTER;
     
@@ -148,6 +147,51 @@ ErrorCode closeRealtimePlot(void *plotHandle, const char *controllerName) {
         return ERROR_CALLBACK_FAILED;
     }
     
+    // Validate we have data to plot
+    if (totalPoints < 2) {
+        fprintf(stderr, "Warning: Not enough data points (%d) to generate plot for %s\n", 
+                totalPoints, controllerName);
+        free(plot->dataBuffer);
+#ifdef _WIN32
+        _pclose(plot->gnuplotPipe);
+#else
+        pclose(plot->gnuplotPipe);
+#endif
+        free(plot);
+        return ERROR_CALLBACK_FAILED;
+    }
+    
+    // Calculate data ranges for proper axis scaling
+    double minTime = plot->dataBuffer[startIdx].time;
+    double maxTime = plot->dataBuffer[startIdx].time;
+    double minLevel = plot->dataBuffer[startIdx].level;
+    double maxLevel = plot->dataBuffer[startIdx].level;
+    double minControl = plot->dataBuffer[startIdx].control;
+    double maxControl = plot->dataBuffer[startIdx].control;
+    
+    for (int i = 0; i < totalPoints; i++) {
+        int idx = (startIdx + i) % plot->bufferSize;
+        double t = plot->dataBuffer[idx].time;
+        double l = plot->dataBuffer[idx].level;
+        double c = plot->dataBuffer[idx].control;
+        
+        if (t < minTime) minTime = t;
+        if (t > maxTime) maxTime = t;
+        if (l < minLevel) minLevel = l;
+        if (l > maxLevel) maxLevel = l;
+        if (c < minControl) minControl = c;
+        if (c > maxControl) maxControl = c;
+    }
+    
+    // Add margins to ranges
+    double timeMargin = (maxTime - minTime) * 0.05;
+    double levelMargin = (maxLevel - minLevel) * 0.1;
+    double controlMargin = (maxControl - minControl) * 0.1;
+    
+    // Ensure minimum margin if range is too small
+    if (levelMargin < 0.5) levelMargin = 0.5;
+    if (controlMargin < 0.05) controlMargin = 0.05;
+    
     // Save to PNG file using datablocks (already defined from real-time updates)
     // Redefine datablocks with all collected data
     fprintf(plot->gnuplotPipe, "$level << EOD\n");
@@ -170,6 +214,9 @@ ErrorCode closeRealtimePlot(void *plotHandle, const char *controllerName) {
         fprintf(plot->gnuplotPipe, "%f %f\n", plot->dataBuffer[idx].time, plot->dataBuffer[idx].control);
     }
     fprintf(plot->gnuplotPipe, "EOD\n");
+    
+    // Flush datablocks before plotting to ensure they're ready
+    fflush(plot->gnuplotPipe);
     
     // Determine controller type and create appropriate subdirectory
     const char *controllerType = "other";
@@ -206,15 +253,19 @@ ErrorCode closeRealtimePlot(void *plotHandle, const char *controllerName) {
     fprintf(plot->gnuplotPipe, "set xlabel 'Time (s)'\n");
     fprintf(plot->gnuplotPipe, "set key top right\n");
     
-    // Plot water level using datablocks
+    // Plot water level with explicit ranges to avoid warnings
     fprintf(plot->gnuplotPipe, "set title 'Water Tank Level Control - %s'\n", controllerName);
     fprintf(plot->gnuplotPipe, "set ylabel 'Water Level (m)'\n");
+    fprintf(plot->gnuplotPipe, "set xrange [%f:%f]\n", minTime - timeMargin, maxTime + timeMargin);
+    fprintf(plot->gnuplotPipe, "set yrange [%f:%f]\n", minLevel - levelMargin, maxLevel + levelMargin);
     fprintf(plot->gnuplotPipe, "plot $level using 1:2 with lines lw 2 lt rgb 'blue' title 'Actual Level', "
             "$setpoint using 1:2 with lines lw 2 lt rgb 'red' dashtype 2 title 'Setpoint'\n");
     
-    // Plot control signal using datablock
+    // Plot control signal with explicit ranges
     fprintf(plot->gnuplotPipe, "set title 'Control Signal (Inflow Rate) - %s'\n", controllerName);
     fprintf(plot->gnuplotPipe, "set ylabel 'Inflow (m³/s)'\n");
+    fprintf(plot->gnuplotPipe, "set xrange [%f:%f]\n", minTime - timeMargin, maxTime + timeMargin);
+    fprintf(plot->gnuplotPipe, "set yrange [%f:%f]\n", minControl - controlMargin, maxControl + controlMargin);
     fprintf(plot->gnuplotPipe, "plot $control using 1:2 with lines lw 2 lt rgb 'green' title 'Control Signal'\n");
     
     fprintf(plot->gnuplotPipe, "unset multiplot\n");

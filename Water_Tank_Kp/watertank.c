@@ -28,19 +28,29 @@ ErrorCode tankModel(void *system, double input, double dt, double *output) {
     // Set inflow from control input
     tank->inflow = input;
     
+    // Convert percentage to actual volume: volume = (percentage / 100) * max_volume
+    double volume_m3 = (tank->level / 100.0) * tank->model.max_level;
+    
+    // Convert volume to level (height) for outflow calculation: level = volume / area
+    double level_m = volume_m3 / tank->model.area;
+    
     // Calculate net MASS flow using callback: ṁ = (dvol_w/dt) * ρ_w
-    double netMassFlow = calculateTankNetFlow(tank, tank->level, tank->inflow);
+    double netMassFlow = calculateTankNetFlow(tank, level_m, tank->inflow);
     
     // Volume change: dvol_w/dt = ṁ / ρ
     double dVolume = (netMassFlow / tank->model.density) * dt;
     
-    // Change in level = dVolume / area
-    tank->level += dVolume / tank->model.area;
+    // Convert volume change to percentage change
+    double dLevel_pct = (dVolume / tank->model.max_level) * 100.0;
     
-    // Keep level non-negative
+    // Update level (percentage)
+    tank->level += dLevel_pct;
+    
+    // Keep level within 0-100%
     if (tank->level < 0) tank->level = 0;
+    if (tank->level > 100) tank->level = 100;
     
-    // Return the updated water level as output
+    // Return the updated water level (percentage) as output
     *output = tank->level;
     return ERROR_SUCCESS;
 }
@@ -76,7 +86,6 @@ double calculateTankNetFlowSimplified(WaterTank *tank, double level, double infl
 // More accurate numerical integration using trapezoidal rule
 // Following the generalized algorithm: vol[t_i] = vol[t_{i-1}] + ((ṁ[t_{i-1}] + ṁ[t_i]) / 2) * dt
 // Where: ṁ = (dvol_w/dt) * ρ_w  and  dvol_w/dt = ṁ / ρ
-// In our case: level[t_i] = level[t_{i-1}] + ((ṁ[t_{i-1}] + ṁ[t_i]) / (2 * ρ * area)) * dt
 ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *output) {
     if (system == NULL || output == NULL) return ERROR_NULL_POINTER;
     
@@ -85,9 +94,15 @@ ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *ou
     // Set inflow from control input
     tank->inflow = input;
     
+    // Convert percentage to actual volume: volume = (percentage / 100) * max_volume
+    double volume_m3 = (tank->level / 100.0) * tank->model.max_level;
+    
+    // Convert volume to level (height) for outflow calculation: level = volume / area
+    double level_m = volume_m3 / tank->model.area;
+    
     // Calculate net MASS flow at current level (this becomes ṁ[t_i])
     // netFlowCallback returns ṁ = (dvol_w/dt) * ρ_w
-    double massFlow_current = tank->model.netFlowCallback(tank, tank->level, tank->inflow);
+    double massFlow_current = tank->model.netFlowCallback(tank, level_m, tank->inflow);
     
     // Apply trapezoidal rule: average of previous and current mass flows
     // ṁ_avg = (ṁ[t_{i-1}] + ṁ[t_i]) / 2
@@ -96,16 +111,20 @@ ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *ou
     // Convert mass flow to volume change: dvol_w/dt = ṁ / ρ
     double volumeChange = (massFlow_avg / tank->model.density) * dt;
     
-    // Convert volume change to level change: dlevel = dvolume / area
-    tank->level += volumeChange / tank->model.area;
+    // Convert volume change to percentage change
+    double dLevel_pct = (volumeChange / tank->model.max_level) * 100.0;
     
-    // Keep level non-negative
+    // Update level (percentage)
+    tank->level += dLevel_pct;
+    
+    // Keep level within 0-100%
     if (tank->level < 0) tank->level = 0;
+    if (tank->level > 100) tank->level = 100;
     
     // Store current mass flow for next iteration (it becomes the previous value)
     tank->previousNetFlow = massFlow_current;
     
-    // Return the updated water level as output
+    // Return the updated water level as output (in percentage)
     *output = tank->level;
     return ERROR_SUCCESS;
 }
@@ -122,9 +141,12 @@ ErrorCode tankModelTrapezoidalSimplified(void *system, double input, double dt, 
     tank->inflow = input;
     
     // Calculate net MASS flow at current level (this becomes ṁ[t_i])
+    // Convert volume to level for outflow calculation: level = volume / area  
+    double level_m = tank->level / tank->model.area;
+    
     // In simplified model: ṁ = input * density (no outflow)
     // This is equivalent to Python: m_dot = Kp * error
-    double massFlow_current = tank->model.netFlowCallback(tank, tank->level, tank->inflow);
+    double massFlow_current = tank->model.netFlowCallback(tank, level_m, tank->inflow);
     
     // Apply trapezoidal rule: average of previous and current mass flows
     // Python equation: volume[i] = volume[i-1] + (m_dot[i-1] + m_dot[i])/(2*density) * dt
@@ -135,16 +157,20 @@ ErrorCode tankModelTrapezoidalSimplified(void *system, double input, double dt, 
     // This matches: (m_dot[i-1] + m_dot[i])/(2*density)
     double volumeChange = (massFlow_avg / tank->model.density) * dt;
     
-    // Convert volume change to level change: dlevel = dvolume / area
-    tank->level += volumeChange / tank->model.area;
+    // Convert volume change to percentage change
+    double dLevel_pct = (volumeChange / tank->model.max_level) * 100.0;
     
-    // Keep level non-negative
+    // Update level (percentage)
+    tank->level += dLevel_pct;
+    
+    // Keep level within 0-100%
     if (tank->level < 0) tank->level = 0;
+    if (tank->level > 100) tank->level = 100;
     
     // Store current mass flow for next iteration (it becomes the previous value)
     tank->previousNetFlow = massFlow_current;
     
-    // Return the updated water level as output
+    // Return the updated water level (percentage) as output
     *output = tank->level;
     return ERROR_SUCCESS;
 }
