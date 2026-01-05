@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "watertank.h"
 #include <stddef.h>
+#include <math.h>
 
 // Error calculation function
 ErrorCode calculateError(double setpoint, double currentOutput, double *error) {

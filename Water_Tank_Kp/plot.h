@@ -27,7 +27,7 @@ int isPlotFallbackEnabled(void);
 // Real-time plotting functions
 // Initialize real-time plot for a specific controller
 // Returns: ErrorCode (ERROR_SUCCESS or error code), sets plotHandle to plot pointer or NULL
-ErrorCode initRealtimePlot(const char *controllerName, double Kp, int windowIndex, void **plotHandle);
+ErrorCode initRealtimePlot(const char *controllerName, int windowIndex, void **plotHandle);
 
 // Update real-time plot with new data point
 // Returns: ErrorCode

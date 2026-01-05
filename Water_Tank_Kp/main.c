@@ -67,7 +67,6 @@ void* runSimulation(void *arg) {
     ThreadData *data = (ThreadData*)arg;
     SimulationConfig *sim = data->config;
     double dt = data->dt;
-    int n = data->n;
     
     printf("[Thread %s] Starting simulation (Kp=%.2f, Ki=%.2f, Kd=%.2f)...\n", 
            sim->name,
@@ -77,7 +76,7 @@ void* runSimulation(void *arg) {
     
     // Initialize data collection (no real-time plotting)
     void *realtimePlot = NULL;
-    ErrorCode plotErr = initRealtimePlot(sim->name, sim->params.Kp, data->windowIndex, &realtimePlot);
+    ErrorCode plotErr = initRealtimePlot(sim->name, data->windowIndex, &realtimePlot);
     if (plotErr == ERROR_SUCCESS && realtimePlot != NULL) {
         printf("[Thread %s] Data collection initialized\n", sim->name);
     } else if (plotErr != ERROR_SUCCESS) {
@@ -95,13 +94,13 @@ void* runSimulation(void *arg) {
     
     // Initialize water tank with controller configuration
     // Python reference: vol_o1_i=30 m³, vol_r1_i=70 m³, radius=5m → area=π*r²≈78.54 m²
-    // Normalized to percentage: 0% = empty, 100% = final_volume (354 m³)
-    double tank_area = 3.14159265359 * 5.0 * 5.0;  // π*r² ≈ 78.54 m²
-    double max_height = 4.507;  // Maximum tank height in meters
-    double max_volume = tank_area * max_height;  // Maximum volume = area × height ≈ 354 m³
+    // Percentage-based: 0% = empty, 100% = max_level (4.507 m)
+    double tank_radius = 5.0;  // Tank radius in meters
+    double tank_area = M_PI * tank_radius * tank_radius;  // π × r² ≈ 78.54 m² (matches Python)
+    double max_level = 4.507;  // Maximum tank height in meters (100% = 4.507m)
     WaterTank tank = {
-        .level = 30.0,          // Start at 30% (106.2 m³ / 354 m³ max)
-        .setpoint = 70.0,       // Target 70% (247.8 m³ / 354 m³ max)
+        .level = 30.0,          // Start at 30% (1.3521 m height)
+        .setpoint = 70.0,       // Target 70% (3.1549 m height)
         .inflow = 0.0,          // Will be controlled
         .previousNetFlow = 0.0, // Initialize for trapezoidal integration
         .controller = {
@@ -116,7 +115,7 @@ void* runSimulation(void *arg) {
             .area = tank_area,      // 78.54 m² cross-section (matches Python π*r²)
             .max_inflow = 50.0,     // Max 50 m³/s inflow (increased for high Kp values)
             .density = 1000.0,      // Water density (kg/m³) - matches Python density_water=1000
-            .max_level = max_volume, // 100 m³ maximum volume (100%)
+            .max_level = max_level, // 4.507 m maximum height (100%)
             .callback = data->modelCallback,  // System model callback (Euler/Trapezoidal/Simplified)
             .netFlowCallback = (data->modelCallback == tankModelTrapezoidalSimplified) ? 
                                calculateTankNetFlowSimplified : calculateTankNetFlow
@@ -129,16 +128,16 @@ void* runSimulation(void *arg) {
     while (keep_running && (i * dt < max_time)) {
         double current_time = i * dt;
         
-        // Setpoint profile matching Python Tank 1 reference (normalized to 0-100%)
-        // Setpoint transitions: 70%→20%→90%→50% of max volume (354 m³)
+        // Setpoint profile matching Python Tank 1 reference (percentage 0-100%)
+        // Setpoint transitions: 70%→20%→90%→50% of max height (4.507 m)
         if (current_time < 12.0) {
-            tank.setpoint = 70.0;  // 70% (247.8 m³ / 354 m³)
+            tank.setpoint = 70.0;  // 70% (3.1549 m)
         } else if (current_time < 24.0) {
-            tank.setpoint = 20.0;  // 20% (70.8 m³ / 354 m³)
+            tank.setpoint = 20.0;  // 20% (0.9014 m)
         } else if (current_time < 36.0) {
-            tank.setpoint = 90.0;  // 90% (318.6 m³ / 354 m³)
+            tank.setpoint = 90.0;  // 90% (4.0563 m)
         } else {
-            tank.setpoint = 50.0;  // 50% (177.0 m³ / 354 m³)
+            tank.setpoint = 50.0;  // 50% (2.2535 m)
         }
         
         // Update tank using specified controller
@@ -205,27 +204,23 @@ int main() {
     
     // Simulation parameters (matching Python reference: calculus_sim_waterTanks_Kp_controller.py)
     double dt = 0.04;             // Time step (s) - matches Python dt=0.04
-    double sim_time = 0.0;        // Infinite simulation
     int n = 0;                    // Not used anymore
     double t_end = 50.0;          // Simulation end time (s) - matches Python t_end=50
     
-    // Tank geometry from Python reference
-    double radius = 5.0;          // Tank radius (m) - matches Python radius=5
-    double tank_area = 3.14159265359 * radius * radius;  // Area = π*r² ≈ 78.54 m²
-    
     // Controller parameter definitions
-    // Python reference uses Kp=1000 for mass flow (kg/s) with volume error (m³)
-    // Our controller uses volume error (m³) and outputs volume flow (m³/s)
-    // Therefore: C_Kp = Python_Kp / density = 1000 / 1000 = 1.0
-    // NO scaling by area needed since we work with volume directly
-    const ControllerParams PARAMS_P           = {1.0,  0.0, 0.0};   // P: Kp=1.0 (matches Python Kp=1000)
-    const ControllerParams PARAMS_P_ADAPTIVE  = {5.0,  0.0, 0.0};   // P Adaptive: Kp=5.0 (matches Python Kp=5000)
+    // System now uses PERCENTAGE (0-100%) for level and setpoint
+    // Error is in percentage units, so gains can be smaller
+    // Python reference: Kp=1000 (kg/s per m³ error) → C_Kp = 1000/1000 = 1.0 (m³/s per m³ error)
+    // Since percentage error ~22x larger than volume error, we can use smaller gains
+    // Percentage range 0-100, typical error = 40% → control needs to produce appropriate m³/s flow
+    const ControllerParams PARAMS_P           = {1.0,  0.0, 0.0};   // P: Kp=1.0
+    const ControllerParams PARAMS_P_ADAPTIVE  = {5.0,  0.0, 0.0};   // P Adaptive: Kp=5.0
     const ControllerParams PARAMS_PD          = {0.40, 0.0, 0.60};  // PD Controller
-    const ControllerParams PARAMS_PD_ADAPTIVE = {2.8,  0.0, 0.45};  // PD Adaptive Controller
+    const ControllerParams PARAMS_PD_ADAPTIVE = {2.8,  0.0, 0.45};  // PD Adaptive
     const ControllerParams PARAMS_PI          = {0.30, 0.08, 0.0};  // PI Controller
-    const ControllerParams PARAMS_PI_ADAPTIVE = {0.80, 0.08, 0.0};  // PI Adaptive Controller
+    const ControllerParams PARAMS_PI_ADAPTIVE = {0.80, 0.08, 0.0};  // PI Adaptive
     const ControllerParams PARAMS_PID         = {0.35, 0.08, 0.50}; // PID Controller
-    const ControllerParams PARAMS_PID_ADAPTIVE = {1.0, 0.08, 0.50}; // PID Adaptive Controller
+    const ControllerParams PARAMS_PID_ADAPTIVE = {1.0, 0.08, 0.50}; // PID Adaptive
     
     // Configure 8 different controllers with optimized tuning
     SimulationConfig simulations[8] = {

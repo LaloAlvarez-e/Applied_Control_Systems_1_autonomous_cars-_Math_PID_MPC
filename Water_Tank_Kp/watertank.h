@@ -18,15 +18,15 @@ typedef struct {
     double area;               // Tank cross-sectional area (m²)
     double max_inflow;         // Maximum inflow rate (m³/s)
     double density;            // Water density (kg/m³)
-    double max_level;          // Maximum tank volume (m³) for 100% normalization (e.g., 354 m³)
+    double max_level;          // Maximum tank height (m) for 100% normalization (e.g., 4.507 m)
     SystemModelCallback callback; // System model callback
     NetFlowCallback netFlowCallback; // Net flow calculation callback
 } ModelConfig;
 
 // Water tank simulation parameters
 typedef struct WaterTank {
-    double level;           // Current water level (0-100%, normalized by max volume)
-    double setpoint;        // Desired water level (0-100%, normalized by max volume)
+    double level;           // Current water level (0-100%, normalized by max_height)
+    double setpoint;        // Desired water level (0-100%, normalized by max_height)
     double inflow;          // Water inflow rate (m³/s)
     double previousNetFlow; // Net flow from previous iteration (for trapezoidal integration)
     ControllerConfig controller; // Controller configuration with callbacks

@@ -8,6 +8,8 @@
 #else
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/stat.h>
+#include "math.h"
 #endif
 
 // Global state for plotting
@@ -16,8 +18,6 @@ static int useFallback = 0;
 #ifdef _WIN32
 static CRITICAL_SECTION gnuplotMutex;
 static int mutexInitialized = 0;
-#else
-static pthread_mutex_t gnuplotMutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 // Structure to hold real-time plot data
@@ -72,7 +72,7 @@ int isPlotFallbackEnabled(void) {
     return useFallback;
 }
 
-ErrorCode initRealtimePlot(const char *controllerName, double Kp, int windowIndex, void **plotHandle) {
+ErrorCode initRealtimePlot(const char *controllerName, int windowIndex, void **plotHandle) {
     if (plotHandle == NULL || controllerName == NULL) return ERROR_NULL_POINTER;
     
     *plotHandle = NULL;
