@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/stat.h>
-#include "math.h"
+#include <math.h>
 #endif
 
 // Global state for plotting

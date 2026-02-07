@@ -25,7 +25,9 @@ typedef struct {
 
 // Water tank simulation parameters
 typedef struct WaterTank {
-    double level;           // Current water level (0-100%, normalized by max_height)
+    double level;           // Derived water level (0-100%, computed from volume) - OUTPUT
+    double volume;          // Current water volume (m³) - INTERNAL STATE
+    double height;          // Current water height (m, derived from volume) - INTERNAL TRACKING
     double setpoint;        // Desired water level (0-100%, normalized by max_height)
     double inflow;          // Water inflow rate (m³/s)
     double previousNetFlow; // Net flow from previous iteration (for trapezoidal integration)
@@ -43,7 +45,7 @@ ErrorCode getTankSetpoint(void *system, double *setpoint);
 // Get current water level from tank (GetOutputCallback compatible)
 // Parameters:
 //   system: pointer to WaterTank structure (cast from void*)
-//   output: pointer to store current water level (m)
+//   output: pointer to store current water level (percentage 0-100%, derived from volume)
 // Returns: ErrorCode
 ErrorCode getTankOutput(void *system, double *output);
 

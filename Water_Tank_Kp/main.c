@@ -98,8 +98,17 @@ void* runSimulation(void *arg) {
     double tank_radius = 5.0;  // Tank radius in meters
     double tank_area = M_PI * tank_radius * tank_radius;  // π × r² ≈ 78.54 m² (matches Python)
     double max_level = 4.507;  // Maximum tank height in meters (100% = 4.507m)
+    double max_volume = tank_area * max_level;  // V_max = area × max_level ≈ 354.00 m³
+    
+    // Initialize volume from initial level percentage
+    double initial_level_pct = 30.0;  // Start at 30%
+    double initial_volume = (initial_level_pct / 100.0) * max_volume;  // volume = (30/100) × 354 = 106.2 m³
+    double initial_height = initial_volume / tank_area;  // height = volume / area = 106.2 / 78.54 = 1.352 m
+    
     WaterTank tank = {
-        .level = 30.0,          // Start at 30% (1.3521 m height)
+        .level = initial_level_pct, // Output: level in percentage (30%)
+        .volume = initial_volume,  // Internal state: volume in m³ (106.2 m³)
+        .height = initial_height,  // Internal tracking: height in m (1.352 m)
         .setpoint = 70.0,       // Target 70% (3.1549 m height)
         .inflow = 0.0,          // Will be controlled
         .previousNetFlow = 0.0, // Initialize for trapezoidal integration

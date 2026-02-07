@@ -28,8 +28,8 @@ ErrorCode tankModel(void *system, double input, double dt, double *output) {
     // Set inflow from control input
     tank->inflow = input;
     
-    // Convert percentage to actual height: height = (percentage / 100) * max_level
-    double level_m = (tank->level / 100.0) * tank->model.max_level;
+    // Convert volume to height for physics calculation: height = volume / area
+    double level_m = tank->volume / tank->model.area;
     
     // Calculate net MASS flow using callback: ṁ = (dvol_w/dt) * ρ_w
     double netMassFlow = calculateTankNetFlow(tank, level_m, tank->inflow);
@@ -37,18 +37,21 @@ ErrorCode tankModel(void *system, double input, double dt, double *output) {
     // Volume change: dvol_w/dt = ṁ / ρ
     double dVolume = (netMassFlow / tank->model.density) * dt;
     
-    // Convert volume change to height change: dh = dV / area
-    double dHeight = dVolume / tank->model.area;
+    // Update volume (m³) - INTERNAL STATE
+    tank->volume += dVolume;
     
-    // Convert height change to percentage change: d% = (dh / max_level) * 100
-    double dLevel_pct = (dHeight / tank->model.max_level) * 100.0;
+    // Calculate max volume: V_max = area × max_level
+    double max_volume = tank->model.area * tank->model.max_level;
     
-    // Update level (percentage)
-    tank->level += dLevel_pct;
+    // Keep volume within physical limits
+    if (tank->volume < 0) tank->volume = 0;
+    if (tank->volume > max_volume) tank->volume = max_volume;
     
-    // Keep level within 0-100%
-    if (tank->level < 0) tank->level = 0;
-    if (tank->level > 100) tank->level = 100;
+    // Derive height from volume: height = volume / area
+    tank->height = tank->volume / tank->model.area;
+    
+    // Derive level (percentage) from volume: level% = (volume / V_max) × 100
+    tank->level = (tank->volume / max_volume) * 100.0;
     
     // Return the updated water level (percentage) as output
     *output = tank->level;
@@ -95,8 +98,8 @@ ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *ou
     // Set inflow from control input
     tank->inflow = input;
     
-    // Convert percentage to actual height: height = (percentage / 100) * max_level
-    double level_m = (tank->level / 100.0) * tank->model.max_level;
+    // Convert volume to height for physics calculation: height = volume / area
+    double level_m = tank->volume / tank->model.area;
     
     // Calculate net MASS flow at current level (this becomes ṁ[t_i])
     // netFlowCallback returns ṁ = (dvol_w/dt) * ρ_w
@@ -109,18 +112,18 @@ ErrorCode tankModelTrapezoidal(void *system, double input, double dt, double *ou
     // Convert mass flow to volume change: dvol_w/dt = ṁ / ρ
     double volumeChange = (massFlow_avg / tank->model.density) * dt;
     
-    // Convert volume change to height change: dh = dV / area
-    double dHeight = volumeChange / tank->model.area;
+    // Update volume (m³) - INTERNAL STATE
+    tank->volume += volumeChange;
     
-    // Convert height change to percentage change: d% = (dh / max_level) * 100
-    double dLevel_pct = (dHeight / tank->model.max_level) * 100.0;
+    // Calculate max volume: V_max = area × max_level
+    double max_volume = tank->model.area * tank->model.max_level;
     
-    // Update level (percentage)
-    tank->level += dLevel_pct;
+    // Keep volume within physical limits
+    if (tank->volume < 0) tank->volume = 0;
+    if (tank->volume > max_volume) tank->volume = max_volume;
     
-    // Keep level within 0-100%
-    if (tank->level < 0) tank->level = 0;
-    if (tank->level > 100) tank->level = 100;
+    // Derive level (percentage) from volume: level% = (volume / V_max) × 100
+    tank->level = (tank->volume / max_volume) * 100.0;
     
     // Store current mass flow for next iteration (it becomes the previous value)
     tank->previousNetFlow = massFlow_current;
@@ -141,8 +144,8 @@ ErrorCode tankModelTrapezoidalSimplified(void *system, double input, double dt, 
     // Set inflow from control input
     tank->inflow = input;
     
-    // Convert percentage to actual height: height = (percentage / 100) * max_level
-    double level_m = (tank->level / 100.0) * tank->model.max_level;
+    // Convert volume to height for physics calculation: height = volume / area
+    double level_m = tank->volume / tank->model.area;
     
     // In simplified model: ṁ = input * density (no outflow)
     // This is equivalent to Python: m_dot = Kp * error
@@ -157,18 +160,21 @@ ErrorCode tankModelTrapezoidalSimplified(void *system, double input, double dt, 
     // This matches: (m_dot[i-1] + m_dot[i])/(2*density)
     double volumeChange = (massFlow_avg / tank->model.density) * dt;
     
-    // Convert volume change to height change: dh = dV / area
-    double dHeight = volumeChange / tank->model.area;
+    // Update volume (m³) - INTERNAL STATE
+    tank->volume += volumeChange;
     
-    // Convert height change to percentage change: d% = (dh / max_level) * 100
-    double dLevel_pct = (dHeight / tank->model.max_level) * 100.0;
+    // Calculate max volume: V_max = area × max_level
+    double max_volume = tank->model.area * tank->model.max_level;
     
-    // Update level (percentage)
-    tank->level += dLevel_pct;
+    // Keep volume within physical limits
+    if (tank->volume < 0) tank->volume = 0;
+    if (tank->volume > max_volume) tank->volume = max_volume;
     
-    // Keep level within 0-100%
-    if (tank->level < 0) tank->level = 0;
-    if (tank->level > 100) tank->level = 100;
+    // Derive height from volume: height = volume / area
+    tank->height = tank->volume / tank->model.area;
+    
+    // Derive level (percentage) from volume: level% = (volume / V_max) × 100
+    tank->level = (tank->volume / max_volume) * 100.0;
     
     // Store current mass flow for next iteration (it becomes the previous value)
     tank->previousNetFlow = massFlow_current;
